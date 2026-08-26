@@ -1,0 +1,15 @@
+data/raw/*.parquet
+data/raw/_done_games.json
+data/processed/*
+models/*.txt
+models/*.pkl
+__pycache__/
+*.pyc
+.venv/
+data/raw/_collect.lock
+data/raw_backup_badplayerstats/
+models/*.csv
+models/*.json
+reports/*.log
+nohup.out
+reports/*.csv
