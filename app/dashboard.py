@@ -78,8 +78,15 @@ if not games:
 
 labels = {g["gameId"]: f"{g['awayTeamName']} @ {g['homeTeamName']}  [{g.get('statusInfo') or g['statusCode']}]"
           for g in games}
+
+# 기본 선택은 **중계 데이터가 있는 첫 경기**로. 그냥 목록 첫 번째를 쓰면
+# 우천 연기된 경기(BEFORE)가 걸려서 "아직 중계 데이터가 없습니다"만 뜬다.
+PLAYED = ("RESULT", "STARTED", "LIVE")
+default_i = next((i for i, g in enumerate(games) if g.get("statusCode") in PLAYED), 0)
+
 # key 를 주면 선택이 세션에 남아 자동 갱신 후에도 유지된다
-gid = st.sidebar.selectbox("경기", list(labels), format_func=lambda k: labels[k],
+gid = st.sidebar.selectbox("경기", list(labels), index=default_i,
+                           format_func=lambda k: labels[k],
                            key=f"game_{sel_date:%Y%m%d}")
 auto = st.sidebar.toggle("30초마다 자동 갱신", value=False, key="auto_refresh",
                          help="진행 중인 경기에서만 의미가 있습니다. "
@@ -128,7 +135,7 @@ def live_panel(game_id: str) -> None:
     c3.metric("현재 국면", f"{int(cur['inning'])}회{half} {int(cur['outs'])}아웃")
     c4.metric(f"{home} 승률", f"{info['wp_home']*100:.1f}%",
               delta=f"{cur['wpa']*100:+.1f}%p",
-              help="아래 숫자는 직전 플레이로 승률이 움직인 폭입니다.")
+              help="아래 숫자는 직전 상황으로 승률이 움직인 폭입니다. 타석이 진행 중이면 그 타석의 최종 WPA와 다를 수 있습니다.")
 
     st.progress(info["wp_home"])
     st.caption(f"← {away} {info['wp_away']*100:.1f}%     |     {home} {info['wp_home']*100:.1f}% →")
@@ -191,7 +198,7 @@ def live_panel(game_id: str) -> None:
                     f"`{r.from_zone} → {r.to_zone}`\n\n"
                     f"{home} 승률 **{r.wp_before*100:.1f}% → {r.wp_after*100:.1f}%**\n\n"
                     f"결정적이었던 플레이 — {r.trigger} "
-                    f"(이 플레이로 {r.trigger_wpa*100:+.1f}%p)")
+                    f"(이 타석으로 {r.trigger_wpa*100:+.1f}%p)")
             st.divider()
 
     with st.expander("투구 단위 승률 곡선 (원자료)"):
@@ -235,14 +242,14 @@ def live_panel(game_id: str) -> None:
 
     # ── 승부처 ──
     st.subheader("승률을 가장 크게 흔든 플레이")
-    st.caption("플레이 직후 승률이 얼마나 움직였는지 기준 상위입니다. "
+    st.caption("한 타석이 시작될 때와 끝날 때의 승률 차이 기준 상위입니다. "
                "야구 통계에서 WPA(Win Probability Added)라고 부르는 값입니다.")
     kp = exp.key_plays(feats, top=10).copy()
     kp["이닝"] = kp["inning"].astype(str) + kp["is_bottom"].map({1: "회말", 0: "회초"})
     kp["스코어"] = kp["away_score"].astype(str) + "-" + kp["home_score"].astype(str)
     kp[f"{home} 승률"] = (kp["wp_home"] * 100).map(lambda v: f"{v:.1f}%")
-    kp["이 플레이로"] = (kp["wpa"] * 100).map(lambda v: f"{v:+.1f}%p")
-    st.table(kp[["이닝", "스코어", "text", f"{home} 승률", "이 플레이로"]]
+    kp["이 타석으로"] = (kp["wpa"] * 100).map(lambda v: f"{v:+.1f}%p")
+    st.table(kp[["이닝", "스코어", "text", f"{home} 승률", "이 타석으로"]]
              .rename(columns={"text": "플레이"}).set_index("이닝"))
 
     with st.expander("모델 정보"):

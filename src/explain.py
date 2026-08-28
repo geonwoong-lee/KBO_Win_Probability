@@ -2,7 +2,7 @@
 
 설명을 세 겹으로 쌓는다. 각 겹이 답하는 질문이 다르다.
 
-  1) WPA (Win Probability Added)  — "방금 그 플레이가 승률을 얼마나 바꿨나?"
+  1) WPA (Win Probability Added)  — "그 타석이 승률을 얼마나 바꿨나?"
      야구계가 이미 쓰는 언어. 모델과 무관하게 정의되므로 가장 신뢰받는다.
 
   2) SHAP (TreeSHAP)              — "지금 이 승률은 어떤 요인이 만들었나?"
@@ -116,18 +116,52 @@ class WinProbabilityExplainer:
 
     # ── 1) WPA ───────────────────────────────────────────────────────
     def add_win_probability(self, df: pd.DataFrame) -> pd.DataFrame:
-        """이벤트 시계열에 승률과 WPA(승률 변화량)를 붙인다."""
+        """이벤트 시계열에 승률과 WPA를 붙인다.
+
+        WPA 는 두 가지를 계산한다.
+
+          wpa     이벤트 단위 차분. 승률 곡선을 그리는 데 쓴다.
+          wpa_pa  **타석 단위**. 야구에서 말하는 WPA 는 원래 이쪽이다
+                  (타석 시작 승률 → 타석 종료 승률).
+
+        타석 단위가 필요한 이유는 홈런 하나가 여러 이벤트로 쪼개지기 때문이다.
+        만루 홈런이면 '홈런' 한 줄과 '주자 홈인' 세 줄로 나뉘고, 점수는 홈인 줄에서
+        올라간다. 이벤트 단위로만 보면 **끝내기 만루 홈런의 대표 플레이가
+        '3루주자 홈인'으로 잡힌다.** 실측 사례:
+
+            홈런 (7-5)            +4.2%p
+            1루주자 홈인 (7-6)     -2.2%p   ← 득점했는데 음수 (만루가 사라져서)
+            2루주자 홈인 (7-7)    +43.7%p
+            3루주자 홈인 (7-8)    +45.7%p
+            ────────────────────────────
+            타석 합계             +91.4%p   ← 이게 그 홈런의 WPA다
+        """
         d = df.copy()
         d["wp_home"] = self.predict(d)
         d["wpa"] = d["wp_home"].diff().fillna(0.0)
-        # 공격팀 기준 WPA (해당 팀 관점의 기여)
+
+        # 타석 합계를 그 타석의 '결과' 이벤트에 귀속시킨다.
+        d["wpa_pa"] = 0.0
+        if "pa_no" in d.columns:
+            d = d.sort_values("event_idx")
+            tot = d.groupby("pa_no")["wpa"].transform("sum")
+            is_res = d["event_type"].isin([13, 23])
+            # 결과 이벤트가 여럿이면 첫 줄에만 (희생플라이 + 득점 등)
+            first_res = is_res & ~is_res.groupby(d["pa_no"]).cumsum().gt(1)
+            d.loc[first_res, "wpa_pa"] = tot[first_res]
+
         d["wpa_batting_team"] = np.where(d["is_bottom"] == 1, d["wpa"], -d["wpa"])
         return d
 
     def key_plays(self, df: pd.DataFrame, top: int = 8) -> pd.DataFrame:
-        """승부를 가른 순간 — |WPA| 상위 플레이."""
-        d = self.add_win_probability(df) if "wpa" not in df.columns else df
-        d = d[d["event_type"].isin([13, 23, 24, 14])].copy()
+        """승률을 가장 크게 흔든 플레이 — 타석 단위 WPA 상위.
+
+        이벤트 단위가 아니라 타석 단위로 본다. 그러지 않으면 만루 홈런의
+        대표가 '주자 홈인'으로 잡힌다(add_win_probability 참고).
+        """
+        d = self.add_win_probability(df) if "wpa_pa" not in df.columns else df
+        d = d[d["wpa_pa"] != 0].copy()
+        d["wpa"] = d["wpa_pa"]
         # 3아웃 정규화로 다음 반이닝에 옮겨진 행은 소속 표기를 원래대로 되돌린다.
         # 그러지 않으면 '4회초(원정 공격)에 홈팀 타자'처럼 말이 안 되는 줄이 나온다.
         if "disp_inning" in d.columns:

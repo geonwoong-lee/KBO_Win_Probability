@@ -75,8 +75,13 @@ def half_inning_track(feats: pd.DataFrame) -> pd.DataFrame:
         # '이닝을 끝낸 아웃'(반대 방향)이 뽑혀 득점 표시와 어긋난다.
         # 그래서 방향은 아래에서 순변화가 정해진 뒤 _pick_defining 이 고른다.
         # half_over 행은 직전 반이닝의 플레이가 넘어온 것 → 대표 플레이에서 제외
-        res_frames.append(blk[blk["event_type"].isin(RESULT_EVENTS)
-                              & (blk.get("half_over", 0) == 0)])
+        # 타석 단위 WPA 가 실린 줄만 후보로 둔다.
+        # 이벤트 단위로 보면 만루 홈런의 대표가 '주자 홈인'으로 잡힌다.
+        cand = blk[(blk.get("wpa_pa", pd.Series(0, index=blk.index)) != 0)
+                   & (blk.get("half_over", 0) == 0)].copy()
+        if len(cand):
+            cand["wpa"] = cand["wpa_pa"]
+        res_frames.append(cand)
 
         blocks.append({
             "half_key": int(key),
@@ -206,7 +211,9 @@ def _find_trigger(d: pd.DataFrame, lo: int, hi: int, delta: float) -> tuple[str,
     가장 크게 움직인 결과성 플레이를 찾아야 한다.
     """
     seg = d.iloc[lo:hi + 1]
-    seg = seg[seg["event_type"].isin(RESULT_EVENTS)]
+    seg = seg[seg.get("wpa_pa", pd.Series(0, index=seg.index)) != 0].copy()
+    if len(seg):
+        seg["wpa"] = seg["wpa_pa"]
     if seg.empty:
         row = d.iloc[hi]
         return str(row["text"]), float(row["wpa"]), _disp(row)[0], _disp(row)[1]

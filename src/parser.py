@@ -167,7 +167,14 @@ def flatten_relay(relay_innings: list[dict], game_id: str) -> pd.DataFrame:
             "pitch_type": opt.get("stuff"),
             "pitch_result": opt.get("pitchResult"),
             # 네이버 자체 승률 (벤치마크용, 0~100)
+            # 결측 판별은 '값이 0이냐'가 아니라 **홈+원정 합이 100이냐**로 한다.
+            #   정상  h=50,  a=50  → 합 100
+            #   결측  h=0,   a=0   → 합 0
+            #   홈 확정 h=100, a=0 → 합 100 (진짜 예측이므로 살려야 한다)
+            # 0 을 전부 결측으로 보면 네이버가 확신하고 맞힌 행을 통째로 버려
+            # 네이버 점수가 실제보다 나쁘게 나온다.
             "naver_wp_home": _f(metric.get("homeTeamWinRate")),
+            "naver_wp_away": _f(metric.get("awayTeamWinRate")),
             "naver_wpa_plate": _f(metric.get("wpaByPlate")),
         })
 

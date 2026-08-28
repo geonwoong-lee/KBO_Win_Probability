@@ -81,6 +81,26 @@ def baseline_scorediff(train: pd.DataFrame, test: pd.DataFrame) -> np.ndarray:
 
 
 # ── 평가 ─────────────────────────────────────────────────────────────
+def naver_valid(d: pd.DataFrame) -> pd.Series:
+    """네이버 승률이 실제 예측인 행만 True.
+
+    판별 기준은 '값이 0이냐'가 아니라 **홈+원정 합이 100이냐**다.
+      정상    h=50,  a=50  → 합 100
+      결측    h=0,   a=0   → 합 0
+      홈 확정  h=100, a=0   → 합 100  (진짜 예측)
+    0 을 전부 결측 취급하면 네이버가 확신하고 맞힌 행이 통째로 빠져
+    네이버 점수가 실제보다 나쁘게 나온다. 실측으로 확인한 문제다.
+      naver=100 인 4,787행의 실제 홈 승률은 100.0% (맞는 예측)
+      naver=0   인 8,642행의 실제 홈 승률은  17.6% (결측)
+    """
+    h, a = d.get("naver_wp_home"), d.get("naver_wp_away")
+    if h is None:
+        return pd.Series(False, index=d.index)
+    if a is None:                      # 구버전 데이터: 합을 볼 수 없어 0 만 제외
+        return h.notna() & (h > 0.0) & (h < 100.0)
+    return h.notna() & a.notna() & (((h + a) - 100.0).abs() < 0.5)
+
+
 def evaluate(y, p, name: str) -> dict:
     from sklearn.metrics import log_loss, brier_score_loss, roc_auc_score, accuracy_score
     p = np.clip(np.asarray(p, dtype=float), 1e-6, 1 - 1e-6)
@@ -241,15 +261,19 @@ def main() -> None:
             evaluate(y_te, p_te_raw, "4. LightGBM (보정 전)"),
             evaluate(y_te, p_te, f"5. LightGBM + {cal.kind} 보정 [최종]")]
 
-    # 네이버 자체 승률과의 정면 비교 — 같은 행에서만 공정하게 비교한다.
-    # 0.0 / 100.0 은 네이버 쪽 결측 자리표시자로 보이므로 제외한다.
+    res = pd.DataFrame(rows)
+
+    # 네이버 비교는 **표를 따로 만든다.** 채점하는 행이 다르기 때문이다.
+    # 한 표에 섞으면 서로 다른 행에서 나온 점수를 가로질러 비교하게 된다.
+    nv_res = pd.DataFrame()
     if "naver_wp_home" in te.columns:
         nv = te["naver_wp_home"] / 100.0
-        ok = (nv.notna() & (nv > 0.0) & (nv < 1.0)).values
+        ok = naver_valid(te).values
         if ok.sum() > 500:
-            rows.append(evaluate(y_te[ok], nv.values[ok], f"[참고] 네이버 자체 승률 (n={int(ok.sum()):,})"))
-            rows.append(evaluate(y_te[ok], p_te[ok], "[참고] 우리 모델 (동일 구간)"))
-    res = pd.DataFrame(rows)
+            nv_res = pd.DataFrame([
+                evaluate(y_te[ok], nv.values[ok], "네이버 자체 승률"),
+                evaluate(y_te[ok], p_te[ok], "이 모델"),
+            ])
 
     # ── OOF 기준 비교 (주 비교표) ──
     # 테스트 홀드아웃은 경기 수가 적어 분할 운에 따라 순위가 뒤집힌다.
@@ -259,21 +283,32 @@ def main() -> None:
                 evaluate(y_tr, oof_lr, "2. 점수차 로지스틱"),
                 evaluate(y_tr, oof_emp, "3. 경험적 조회표"),
                 evaluate(y_tr, oof, "4. LightGBM [최종]")]
-    if "naver_wp_home" in tr.columns:
-        nv_tr = tr["naver_wp_home"] / 100.0
-        ok_tr = (nv_tr.notna() & (nv_tr > 0.0) & (nv_tr < 1.0)).values
-        if ok_tr.sum() > 500:
-            oof_rows.append(evaluate(y_tr[ok_tr], nv_tr.values[ok_tr],
-                                     f"[참고] 네이버 자체 승률 (n={int(ok_tr.sum()):,})"))
-            oof_rows.append(evaluate(y_tr[ok_tr], oof[ok_tr], "[참고] 우리 모델 (동일 구간)"))
     oof_res = pd.DataFrame(oof_rows)
 
+    nv_oof_res = pd.DataFrame()
+    if "naver_wp_home" in tr.columns:
+        nv_tr = tr["naver_wp_home"] / 100.0
+        ok_tr = naver_valid(tr).values
+        if ok_tr.sum() > 500:
+            nv_oof_res = pd.DataFrame([
+                evaluate(y_tr[ok_tr], nv_tr.values[ok_tr], "네이버 자체 승률"),
+                evaluate(y_tr[ok_tr], oof[ok_tr], "이 모델"),
+            ])
+
     print()
-    print(f"── OOF 비교 (학습 {len(train_g)}경기 / {len(tr):,}행) ──")
+    print(f"── 베이스라인 비교 · OOF (학습 {len(train_g)}경기 / {len(tr):,}행) ──")
     print(oof_res.to_string(index=False))
+    if len(nv_oof_res):
+        print()
+        print(f"── 네이버 비교 · OOF (한쪽으로 기울지 않은 {int(nv_oof_res.n.iloc[0]):,}행) ──")
+        print(nv_oof_res.to_string(index=False))
     print()
-    print(f"── 테스트 홀드아웃 ({len(test_g)}경기 / {len(te):,}행) ──")
+    print(f"── 베이스라인 비교 · 테스트 ({len(test_g)}경기 / {len(te):,}행) ──")
     print(res.to_string(index=False))
+    if len(nv_res):
+        print()
+        print(f"── 네이버 비교 · 테스트 (한쪽으로 기울지 않은 {int(nv_res.n.iloc[0]):,}행) ──")
+        print(nv_res.to_string(index=False))
 
     # 이닝별 성능
     te2 = te.copy()
@@ -323,12 +358,18 @@ def main() -> None:
           f"- 학습 경기 {len(train_g)} / 테스트 경기 {len(test_g)}",
           f"- 테스트 행 수 {len(te):,} (투구·타석 단위 상태)",
           f"- {n_folds}-fold GroupKFold OOF log loss **{oof_ll:.4f}** · 최종 라운드 {n_rounds}", "",
-          f"## 모델 비교 — OOF 기준 (주 비교표, {len(train_g)}경기)", "",
+          f"## 베이스라인 비교 — OOF ({len(train_g)}경기 / {len(tr):,}행)", "",
           oof_res.to_markdown(index=False), "",
           "> 테스트 홀드아웃은 경기 수가 적어 분할 운에 따라 순위가 뒤집힌다. "
           "같은 폴드에서 만든 OOF 예측으로 비교하면 학습 경기 전체가 표본이 되어 안정적이다.", "",
-          f"## 모델 비교 — 테스트 홀드아웃 ({len(test_g)}경기)", "",
+          *(([f"## 네이버 비교 — OOF (한쪽으로 기울지 않은 {int(nv_oof_res.n.iloc[0]):,}행)", "",
+              nv_oof_res.to_markdown(index=False), ""]) if len(nv_oof_res) else []),
+          f"## 베이스라인 비교 — 테스트 ({len(test_g)}경기 / {len(te):,}행)", "",
           res.to_markdown(index=False), "",
+          *(([f"## 네이버 비교 — 테스트 (한쪽으로 기울지 않은 {int(nv_res.n.iloc[0]):,}행)", "",
+              nv_res.to_markdown(index=False), "",
+              "> 베이스라인 표와 채점한 행이 다르다. 두 표의 숫자를 가로질러 비교하면 안 된다.", ""])
+            if len(nv_res) else []),
           "> Log loss / Brier 는 낮을수록 좋다. 승부예측에서 중요한 것은 정답률이 아니라 확률의 정확도다.", "",
           "## 교차검증 폴드", "", pd.DataFrame(fold_rows).to_markdown(index=False), "",
           "## 보정기 선택", "", pd.DataFrame(cal_report).to_markdown(index=False), "",

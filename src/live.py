@@ -121,7 +121,7 @@ def render(info: dict) -> str:
         f"  {a} {info['away_score']} : {info['home_score']} {h}"
         f"   |  {info['inning']}회{half}   |  {info['ts'][11:]}",
         f"  최근: {info['last_text']}"
-        + (f"   (이 플레이로 승률 {info['wpa_last']*100:+.1f}%p)"
+        + (f"   (직전 상황으로 승률 {info['wpa_last']*100:+.1f}%p)"
            if abs(info["wpa_last"]) > 0.001 else ""),
         "",
         f"  {a} {info['wp_away']*100:5.1f}%  {bar}  {info['wp_home']*100:5.1f}% {h}",
@@ -215,7 +215,7 @@ def main() -> None:
         for r in exp.key_plays(feats, top=5).itertuples():
             half = "말" if r.is_bottom else "초"
             print(f"  {r.inning}회{half} {r.away_score}-{r.home_score}  "
-                  f"승률 {r.wp_home*100:5.1f}%  (이 플레이로 {r.wpa*100:+6.1f}%p)  |  {r.text}")
+                  f"승률 {r.wp_home*100:5.1f}%  (이 타석으로 {r.wpa*100:+6.1f}%p)  |  {r.text}")
         print()
         print(render({**exp.explain(feats.iloc[-1], lg.meta["home_team"], lg.meta["away_team"]),
                       "ts": datetime.now().isoformat(timespec="seconds"),
