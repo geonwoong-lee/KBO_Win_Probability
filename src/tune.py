@@ -62,7 +62,7 @@ def feature_sets() -> dict[str, list[str]]:
     base = list(STATE_FEATURES)
     score_core = ["score_diff", "score_x_progress", "score_per_out_left",
                   "outs_left_bat", "outs_left_field", "is_bottom"]
-    baseout = ["base_state", "re24", "run_potential", "outs", "balls", "strikes",
+    baseout = ["base_state", "run_exp", "run_potential", "outs", "balls", "strikes",
                "is_walkoff_chance", "is_last_at_bat"]
     player = ["pitch_adv_home", "bat_adv_home", "fatigue_adv_home",
               "bullpen_adv_home", "bat_order"]

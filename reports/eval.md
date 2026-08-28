@@ -85,7 +85,7 @@
 | score_per_out_left |      2.15081e+06 |  0.6679 |
 | score_x_progress   | 524614           |  0.1629 |
 | score_diff         | 357251           |  0.1109 |
-| re24               |  62591.8         |  0.0194 |
+| run_exp             |  62591.8         |  0.0194 |
 | is_bottom          |  39783.1         |  0.0124 |
 | outs_left_bat      |  27750.8         |  0.0086 |
 | run_potential      |  26637.5         |  0.0083 |

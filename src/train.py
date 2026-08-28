@@ -4,7 +4,7 @@
   python -m src.train --test-season 2026   # 특정 시즌을 테스트셋으로 고정
 
 산출물: models/wp_model.txt, models/calibrator.pkl, models/meta.json,
-        models/re24.csv, reports/eval.md, reports/reliability.png
+        models/run_exp.csv, reports/eval.md, reports/reliability.png
 
 ────────────────────────────────────────────────────────────────────────
 이 파일의 설계를 지배하는 하나의 사실: **유효 표본은 경기 수다.**
@@ -193,9 +193,9 @@ def main() -> None:
         train_g, test_g = set(gid[tr_i]), set(gid[te_i])
     print(f"[train] 경기 분할  train {len(train_g)} / test {len(test_g)}")
 
-    # 2) RE24 는 학습 경기에서만 추정 (테스트 정보 유입 차단)
+    # 2) 기대득점(RE) 은 학습 경기에서만 추정 (테스트 정보 유입 차단)
     re_tab = build_run_expectancy(normalize_states(events[events.game_id.isin(train_g)].copy()))
-    re_tab.to_csv(MODEL_DIR / "re24.csv", index=False)
+    re_tab.to_csv(MODEL_DIR / "run_exp.csv", index=False)
 
     data = build_features(events, games, re_tab)
     data.to_parquet(DATA_PROC / "model_frame.parquet", index=False)

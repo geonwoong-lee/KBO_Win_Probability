@@ -28,7 +28,7 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from config import MODEL_DIR                                   # noqa: E402
 from src.features import (FEATURES, BASE_STATE_NAME, describe_state,   # noqa: E402
-                          DEFAULT_RE24, add_derived)
+                          DEFAULT_RUN_EXP, add_derived)
 
 
 def _sigmoid(x):
@@ -49,7 +49,7 @@ FEATURE_KO = {
     "score_per_out_left": "점수차/잔여아웃",
     "outs_left_bat": "공격팀 남은 아웃",
     "outs_left_field": "수비팀 남은 아웃",
-    "re24": "득점기대값(RE24)",
+    "run_exp": "기대득점(RE)",
     "run_potential": "잔여 득점 잠재력",
     "is_last_at_bat": "홈팀 마지막 공격",
     "is_walkoff_chance": "끝내기 기회",
@@ -88,13 +88,13 @@ class WinProbabilityExplainer:
         self.calibrator = pickle.loads(cal.read_bytes()) if cal.exists() else None
         meta = model_dir / "meta.json"
         self.meta = json.loads(meta.read_text(encoding="utf-8")) if meta.exists() else {}
-        re_csv = model_dir / "re24.csv"
+        re_csv = model_dir / "run_exp.csv"
         self.re_table = pd.read_csv(re_csv) if re_csv.exists() else None
         if self.re_table is not None:
-            self.re24 = {(int(r.base_state), int(r.outs)): float(r.re24)
+            self.run_exp = {(int(r.base_state), int(r.outs)): float(r.run_exp)
                          for r in self.re_table.itertuples()}
         else:
-            self.re24 = dict(DEFAULT_RE24)
+            self.run_exp = dict(DEFAULT_RUN_EXP)
         self._li_ref = None
 
     # ── 상태 변경 후 파생 특성 재계산 ────────────────────────────────
@@ -339,7 +339,7 @@ def _fmt_val(feature: str, v: float) -> str:
         return BASE_STATE_NAME.get(int(v), str(int(v)))
     if feature in ("is_bottom", "is_last_at_bat", "is_walkoff_chance"):
         return "예" if v else "아니오"
-    if feature in ("re24", "run_potential", "pitcher_season_era", "batter_season_hra",
+    if feature in ("run_exp", "run_potential", "pitcher_season_era", "batter_season_hra",
                    "pitch_adv_home", "bat_adv_home", "fatigue_adv_home",
                    "score_x_progress", "score_per_out_left",
                    "prior_home_wra_diff", "prior_starter_era_diff"):

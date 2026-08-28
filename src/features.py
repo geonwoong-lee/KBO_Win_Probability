@@ -5,7 +5,7 @@
      안타/볼넷 누적처럼 '지금까지'의 값만 사용하고, 최종 스코어는 라벨로만 쓴다.
   2) 상태의 정규화 — 3아웃 행은 '다음 반이닝 시작(무사 주자없음)'으로 옮긴다.
      그래야 같은 국면이 항상 같은 특성 벡터가 된다.
-  3) 야구의 구조를 특성으로 — 남은 아웃카운트, 득점기대값(RE24), 마지막 공격 여부처럼
+  3) 야구의 구조를 특성으로 — 남은 아웃카운트, 기대득점(RE), 마지막 공격 여부처럼
      '규칙에서 유도되는 값'을 명시적으로 넣어야 트리 모델이 적은 데이터로도 잘 배운다.
   4) 라벨은 홈팀 승리(1) / 패배(0). 무승부 경기는 제외.
 """
@@ -68,7 +68,7 @@ STATE_FEATURES = [
     "score_diff", "score_x_progress", "score_per_out_left",
     "outs_left_bat", "outs_left_field", "is_bottom",
     # 주자 · 카운트 · 결정적 국면
-    "base_state", "re24", "run_potential", "outs", "balls", "strikes",
+    "base_state", "run_exp", "run_potential", "outs", "balls", "strikes",
     "is_walkoff_chance", "is_last_at_bat",
 ]
 PREGAME_FEATURES = ["prior_home_wra_diff", "prior_starter_era_diff"]
@@ -78,9 +78,9 @@ FEATURES = STATE_FEATURES + (PREGAME_FEATURES if USE_PREGAME_PRIOR else [])
 CATEGORICAL = ["base_state"]
 
 
-# ── RE24: 베이스-아웃 상태별 잔여 득점기대값 ────────────────────────────
+# ── 기대득점(RE): 베이스-아웃 상태별 잔여 기대득점 ──────────────────────
 def build_run_expectancy(events: pd.DataFrame) -> pd.DataFrame:
-    """데이터에서 직접 RE24(24개 베이스-아웃 상태의 잔여 기대득점)를 추정."""
+    """데이터에서 직접 24개 베이스-아웃 상태의 잔여 기대득점을 추정."""
     df = events.copy()
     df["half_id"] = df["game_id"] + "_" + df["inning"].astype(str) + "_" + df["is_bottom"].astype(str)
     df["bat_score"] = np.where(df["is_bottom"] == 1, df["home_score"], df["away_score"])
@@ -90,11 +90,11 @@ def build_run_expectancy(events: pd.DataFrame) -> pd.DataFrame:
     valid = df[(df["outs"] < 3) & df["event_type"].isin(STATE_EVENTS)]
     re = (valid.groupby(["base_state", "outs"])["runs_rest"]
           .agg(["mean", "count"]).reset_index()
-          .rename(columns={"mean": "re24"}))
+          .rename(columns={"mean": "run_exp"}))
     return re
 
 
-DEFAULT_RE24 = {  # 표본이 없을 때 쓰는 KBO 근사치 (2019-2024 리그 평균 수준)
+DEFAULT_RUN_EXP = {  # 표본이 없을 때 쓰는 KBO 근사치 (2019-2024 리그 평균 수준)
     (0, 0): 0.49, (0, 1): 0.26, (0, 2): 0.10,
     (1, 0): 0.87, (1, 1): 0.52, (1, 2): 0.22,
     (2, 0): 1.11, (2, 1): 0.68, (2, 2): 0.32,
@@ -202,15 +202,15 @@ def add_derived(d: pd.DataFrame, re_table: pd.DataFrame | None = None) -> pd.Dat
     d["outs_left_bat"] = np.where(bot == 1, outs_left_home, outs_left_away)
     d["outs_left_field"] = np.where(bot == 1, outs_left_away, outs_left_home)
 
-    # ── RE24 ──
+    # ── 기대득점(RE) ──
     if re_table is not None and len(re_table):
-        m = {(int(r.base_state), int(r.outs)): float(r.re24) for r in re_table.itertuples()}
+        m = {(int(r.base_state), int(r.outs)): float(r.run_exp) for r in re_table.itertuples()}
     else:
-        m = DEFAULT_RE24
-    d["re24"] = [m.get((int(b), min(2, int(o))), DEFAULT_RE24.get((int(b), min(2, int(o))), 0.5))
+        m = DEFAULT_RUN_EXP
+    d["run_exp"] = [m.get((int(b), min(2, int(o))), DEFAULT_RUN_EXP.get((int(b), min(2, int(o))), 0.5))
                  for b, o in zip(d["base_state"], d["outs"])]
     innings_left = np.maximum(0, 9 - d["inning"]) + (1 - d["is_bottom"]) * 0.5
-    d["run_potential"] = d["re24"] + innings_left * 0.55
+    d["run_potential"] = d["run_exp"] + innings_left * 0.55
 
     # ── 점수차 x 경기 진행도 ──
     # 같은 3점차도 1회에는 거의 무의미하고 9회에는 사실상 승부가 끝난 것이다.
