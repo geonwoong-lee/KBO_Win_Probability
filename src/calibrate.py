@@ -37,7 +37,7 @@ class IdentityCalibrator:
 
 
 class PlattCalibrator:
-    """Platt scaling — 로그오즈에 1차 로지스틱을 씌운다. 단조 + 매끄러움."""
+    """Platt scaling — log odds 에 1차 로지스틱을 씌운다. 단조 + 매끄러움."""
     kind = "platt"
 
     def __init__(self):

@@ -141,7 +141,7 @@ class WinProbabilityExplainer:
     def shap_breakdown(self, row: pd.Series, top: int = 6) -> list[dict]:
         """현재 승률을 특성별 기여도(%p)로 분해.
 
-        LightGBM 의 pred_contrib 은 로그오즈 공간의 기여도를 준다.
+        LightGBM 의 pred_contrib 은 log odds 공간의 기여도를 준다.
         기여도가 큰 순서대로 하나씩 더해가며 확률 공간으로 변환하면
         각 항의 합이 정확히 (예측확률 - 기준확률) 이 되도록 분해할 수 있다.
         """
