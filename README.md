@@ -557,8 +557,6 @@ app/dashboard.py        Streamlit 대시보드
 reports/                평가 리포트 (자동 생성)
 ```
 
-코드 약 3,000줄.
-
 ---
 
 ## 발전 가능성
