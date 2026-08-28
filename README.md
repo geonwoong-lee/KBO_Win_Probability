@@ -505,7 +505,39 @@ streamlit run app/dashboard.py                    # 대시보드
 
 ---
 
-## 폴더 구조
+## 구조
+
+```mermaid
+flowchart LR
+    subgraph L1["수집과 학습"]
+        direction LR
+        A["네이버 스포츠 API<br>일정 · 문자중계 · 프리뷰"]
+        B["parser.py<br>중계 JSON을<br>시간순 이벤트 표로"]
+        C["collect.py<br>잠금 · 체크포인트<br>무결성 검사"]
+        D[("1,136경기<br>632,935 이벤트")]
+        E["features.py<br>상황 정규화 · 기대득점<br>14개 특성"]
+        F["train.py<br>경기 단위 분할<br>LightGBM · 확률 보정"]
+        A --> B --> C --> D --> E --> F
+    end
+
+    G[("models<br>승률 모델 · 보정기<br>기대득점표")]
+    F --> G
+
+    subgraph L2["실시간 예측과 설명"]
+        direction LR
+        H["live.py<br>진행 중 경기<br>30초 폴링"]
+        I["parser.py + features.py<br>같은 코드 재사용"]
+        J["explain.py<br>WPA · SHAP<br>반사실 · 레버리지"]
+        K["flow.py<br>회별 추이<br>흐름 전환점"]
+        M["dashboard.py · viz.py<br>대시보드 · 승률 곡선"]
+        H --> I --> J --> K --> M
+    end
+
+    G --> J
+```
+
+수집한 경기로 학습하고, 진행 중인 경기에는 같은 파서와 같은 특성 계산을 그대로 쓴다.
+학습 때와 실시간 때 다른 코드를 타면 값이 달라지기 때문이다.
 
 ```
 config.py               설정 (경로, API, 요청 간격)
